@@ -144,4 +144,57 @@ for (const [adapterName, makeAdapter] of Object.entries(adapters)) {
     b.questions.push(question('2'));
     assert.equal((await store.banks.get('A.quiz')).questions.length, 1);
   });
+
+  t('list returns a corrupt bank as a flagged stub and still lists the others', async (store) => {
+    await store.banks.put(bank('A.quiz', [question('1')]));
+    await store.banks.put({ path: 'B.quiz', name: 'B', md5: 'md5-B' }); // no `questions`
+    await store.banks.put(bank('C.quiz', [question('1'), question('2')]));
+    await store.sessions.put('B.quiz', { queue: [] });
+    const list = await store.banks.list();
+    assert.deepEqual(list.map((s) => s.path), ['A.quiz', 'B.quiz', 'C.quiz']);
+    assert.deepEqual(list[1], {
+      path: 'B.quiz',
+      name: 'B',
+      md5: 'md5-B',
+      questionCount: 0,
+      lastStudied: null,
+      mastery: 0,
+      hasSession: true,
+      corrupt: true,
+    });
+    assert.ok(!('corrupt' in list[0]));
+    assert.equal(list[2].questionCount, 2);
+  });
+
+  test(`${adapterName}: adapter keys lists a store's keys and has checks one`, async () => {
+    const adapter = await makeAdapter();
+    assert.deepEqual(await adapter.keys('sessions'), []);
+    await adapter.put('sessions', 'B.quiz', { q: 1 });
+    await adapter.put('sessions', 'pool:A|B', { q: 2 });
+    await adapter.put('pictures', 'fig.png', new Blob(['x']));
+    assert.deepEqual((await adapter.keys('sessions')).sort(), ['B.quiz', 'pool:A|B']);
+    assert.equal(await adapter.has('sessions', 'B.quiz'), true);
+    assert.equal(await adapter.has('sessions', 'nope'), false);
+    assert.equal(await adapter.has('pictures', 'fig.png'), true);
+    assert.equal(await adapter.has('pictures', 'nope.png'), false);
+  });
+
+  test(`${adapterName}: list reads session keys once and pictures.has avoids a full read`, async () => {
+    const adapter = await makeAdapter();
+    const calls = { keys: 0, get: [] };
+    const spy = {
+      ...adapter,
+      keys: async (s) => (calls.keys++, adapter.keys(s)),
+      get: async (s, k) => (calls.get.push(s), adapter.get(s, k)),
+    };
+    const store = await openStore(spy);
+    await store.banks.put(bank('A.quiz', [question('1')]));
+    await store.banks.put(bank('B.quiz', [question('1')]));
+    await store.pictures.put('fig.png', new Blob(['x']));
+    await store.banks.list();
+    assert.equal(calls.keys, 1);
+    assert.deepEqual(calls.get, []);
+    assert.equal(await store.pictures.has('fig.png'), true);
+    assert.deepEqual(calls.get, []);
+  });
 }

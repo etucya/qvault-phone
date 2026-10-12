@@ -6,6 +6,8 @@
 //   put(store, key, value) -> stores value under key, replacing any existing one
 //   delete(store, key)     -> removes the key (no error when absent)
 //   getAll(store)          -> array of every value in the store
+//   keys(store)            -> array of every key in the store
+//   has(store, key)        -> true when the key exists (never reads the value)
 //   clear()                -> empties every store
 
 export function memoryAdapter() {
@@ -27,6 +29,12 @@ export function memoryAdapter() {
     },
     async getAll(store) {
       return [...of(store).values()].map((v) => structuredClone(v));
+    },
+    async keys(store) {
+      return [...of(store).keys()];
+    },
+    async has(store, key) {
+      return of(store).has(key);
     },
     async clear() {
       stores.clear();

@@ -26,21 +26,37 @@ export async function openStore(adapter) {
 
   const banks = {
     async list() {
-      const all = await adapter.getAll('banks');
-      const summaries = [];
-      for (const bank of all) {
-        const questions = withDates(bank.questions);
-        const last = lastStudied(questions);
-        summaries.push({
-          path: bank.path,
-          name: bank.name,
-          md5: bank.md5,
-          questionCount: bank.questions.length,
-          lastStudied: last === null ? null : iso(last),
-          mastery: setSummary(questions).mastery,
-          hasSession: (await sessions.get(bank.path)) !== null,
-        });
-      }
+      // One key listing instead of a session read per bank.
+      const [all, sessionKeys] = await Promise.all([adapter.getAll('banks'), adapter.keys('sessions')]);
+      const withSession = new Set(sessionKeys);
+      const summaries = all.map((bank) => {
+        const hasSession = withSession.has(bank.path);
+        try {
+          const questions = withDates(bank.questions);
+          const last = lastStudied(questions);
+          return {
+            path: bank.path,
+            name: bank.name,
+            md5: bank.md5,
+            questionCount: questions.length,
+            lastStudied: last === null ? null : iso(last),
+            mastery: setSummary(questions).mastery,
+            hasSession,
+          };
+        } catch {
+          // One damaged bank must not take the whole library down.
+          return {
+            path: bank.path,
+            name: bank.name,
+            md5: bank.md5,
+            questionCount: 0,
+            lastStudied: null,
+            mastery: 0,
+            hasSession,
+            corrupt: true,
+          };
+        }
+      });
       return summaries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     },
     get: (path) => adapter.get('banks', path),
@@ -55,7 +71,7 @@ export async function openStore(adapter) {
   const pictures = {
     ...keyed('pictures'),
     async has(name) {
-      return (await adapter.get('pictures', name)) !== null;
+      return adapter.has('pictures', name);
     },
   };
 

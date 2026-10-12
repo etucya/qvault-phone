@@ -1,5 +1,5 @@
 // IndexedDB storage adapter. Same interface as storeMemory.js: get / put / delete /
-// getAll per named store, plus clear. Database `qvault`, version 1.
+// getAll / keys / has per named store, plus clear. Database `qvault`, version 1.
 
 const KEYED_STORES = ['sessions', 'pictures', 'settings', 'meta'];
 const ALL_STORES = ['banks', ...KEYED_STORES];
@@ -26,9 +26,10 @@ export async function indexedDBAdapter(name = 'qvault') {
   };
   const db = await promisify(opening);
 
+  // Ask the browser not to evict our data. Fire and forget: opening never waits on it,
+  // and failure or absence is fine.
   try {
-    // Ask the browser not to evict our data. Failure or absence is fine.
-    await navigator?.storage?.persist?.();
+    navigator.storage?.persist?.().catch(() => {});
   } catch {
     // ignored
   }
@@ -36,6 +37,9 @@ export async function indexedDBAdapter(name = 'qvault') {
   const run = (store, mode, fn) => {
     const tx = db.transaction(store, mode);
     const result = fn(tx.objectStore(store));
+    // A failed request also aborts the transaction, which rejects below; keep the
+    // request's own rejection from surfacing a second time as an unhandled one.
+    if (typeof result?.catch === 'function') result.catch(() => {});
     return finished(tx).then(() => result);
   };
 
@@ -55,6 +59,12 @@ export async function indexedDBAdapter(name = 'qvault') {
     },
     async getAll(store) {
       return run(store, 'readonly', (s) => promisify(s.getAll()));
+    },
+    async keys(store) {
+      return run(store, 'readonly', (s) => promisify(s.getAllKeys()));
+    },
+    async has(store, key) {
+      return (await run(store, 'readonly', (s) => promisify(s.count(key)))) > 0;
     },
     async clear() {
       const tx = db.transaction(ALL_STORES, 'readwrite');
