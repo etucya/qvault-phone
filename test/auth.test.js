@@ -1,4 +1,4 @@
-import { test, mock, afterEach } from 'node:test';
+import { test, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAuth } from '../app/auth.js';
 
@@ -27,6 +27,22 @@ function installGoogle() {
 }
 
 const grant = (access_token, expires_in = 3600) => ({ access_token, expires_in });
+
+// A fresh localStorage per test: what the home-screen app keeps between launches.
+function installStorage() {
+  const items = new Map();
+  const storage = {
+    getItem: (key) => (items.has(key) ? items.get(key) : null),
+    setItem: (key, value) => items.set(key, String(value)),
+    removeItem: (key) => items.delete(key),
+  };
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true });
+  return items;
+}
+let saved;
+beforeEach(() => {
+  saved = installStorage();
+});
 
 afterEach(() => {
   mock.timers.reset();
@@ -154,4 +170,66 @@ test('signOut does not hang when the revoke never calls back', async () => {
   await out;
   assert.equal(done, true);
   assert.equal(await auth.getToken(), null);
+});
+
+// ---------------------------------------------------------------------------------------
+// Consent remembered between launches
+
+test('consent is remembered, so a cold launch gets a token silently without a tap', async () => {
+  const log = installGoogle();
+  stubFetch();
+  const first = createAuth({ clientId: 'cid' });
+  const signedIn = first.signIn();
+  log.respond(grant('t1'));
+  await signedIn;
+  assert.equal(saved.get('qvault.consented'), 'true');
+
+  // The app is closed and opened again from the home screen: a new page, no token in memory.
+  const relaunched = createAuth({ clientId: 'cid' });
+  log.requests.length = 0;
+  const pending = relaunched.getToken();
+  assert.deepEqual(log.requests, [{ prompt: '' }], 'a silent request, no consent screen');
+  log.respond(grant('t2'));
+  assert.equal(await pending, 't2');
+});
+
+test('with consent remembered, signIn asks silently first and does not show consent again', async () => {
+  saved.set('qvault.consented', 'true');
+  const log = installGoogle();
+  stubFetch();
+  const auth = createAuth({ clientId: 'cid' });
+  const a = auth.signIn();
+  const b = auth.signIn();
+  await Promise.resolve();
+  assert.deepEqual(log.requests, [{ prompt: '' }], 'one request for both callers');
+  log.respond(grant('t1'));
+  assert.deepEqual(await Promise.all([a, b]), ['t1', 't1']);
+});
+
+test('with consent remembered, a silent sign-in that comes back empty falls back to consent', async () => {
+  saved.set('qvault.consented', 'true');
+  const log = installGoogle();
+  stubFetch();
+  const auth = createAuth({ clientId: 'cid' });
+  const pending = auth.signIn();
+  await Promise.resolve();
+  log.respond({ error: 'interaction_required' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(log.requests, [{ prompt: '' }, { prompt: 'consent' }]);
+  log.respond(grant('t1'));
+  assert.equal(await pending, 't1');
+});
+
+test('signOut forgets the remembered consent', async () => {
+  const log = installGoogle();
+  stubFetch();
+  const auth = createAuth({ clientId: 'cid' });
+  const signedIn = auth.signIn();
+  log.respond(grant('t1'));
+  await signedIn;
+  const out = auth.signOut();
+  log.revokeCallbacks[0]();
+  await out;
+  assert.equal(saved.has('qvault.consented'), false);
+  assert.equal(await createAuth({ clientId: 'cid' }).getToken(), null, 'the next launch waits for a tap');
 });

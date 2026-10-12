@@ -244,3 +244,53 @@ test('a failed write is reported, not thrown', async () => {
   await flush();
   assert.deepEqual(errors, ['disk full']);
 });
+
+// ---------------------------------------------------------------------------------------
+// Sessions over questions a sync took away
+
+test('opening a pool prunes its saved session of questions no longer in any pooled bank, and saves it so', async () => {
+  // a2 was deleted from a.quiz on the Mac and synced away; the pool session still names it.
+  const store = await storeWith([bank('a.quiz', [q('a1')]), bank('b.quiz', [q('b1')])]);
+  const key = 'pool:a.quiz|b.quiz';
+  const saved = savedSession(['a2', 'b1', 'a1']);
+  saved.position = 2;
+  saved.missed = ['a2'];
+  saved.streaks = { a2: 1 };
+  await store.sessions.put(key, saved);
+
+  const setup = await loadSetup(store, ['a.quiz', 'b.quiz']);
+  assert.deepEqual(setup.session.queue, ['b1', 'a1']);
+  assert.equal(setup.session.position, 1, 'the cursor stays on the same question');
+  assert.deepEqual(setup.session.missed, []);
+  assert.deepEqual(setup.session.streaks, {});
+  const stored = decodeState(await store.sessions.get(key));
+  assert.deepEqual(stored.queue, ['b1', 'a1']);
+  assert.equal(stored.position, 1);
+});
+
+test('resuming a pool whose session named a vanished question starts on a live question', async () => {
+  const store = await storeWith([bank('a.quiz', [q('a1')]), bank('b.quiz', [q('b1')])]);
+  await store.sessions.put('pool:a.quiz|b.quiz', savedSession(['gone', 'b1']));
+  const { model } = await startStudy({ store, paths: ['a.quiz', 'b.quiz'], settings: settings(), mode: 'resume', now: fixed, random: first });
+  assert.equal(model.current.id, 'b1');
+  assert.equal(model.isFinished(), false);
+});
+
+test('a session that is already clean is not written again', async () => {
+  const store = await storeWith([bank('a.quiz', [q('a1')]), bank('b.quiz', [q('b1')])]);
+  await store.sessions.put('pool:a.quiz|b.quiz', savedSession(['b1', 'a1']));
+  let writes = 0;
+  const put = store.sessions.put;
+  store.sessions.put = async (...args) => { writes += 1; return put(...args); };
+  const setup = await loadSetup(store, ['a.quiz', 'b.quiz']);
+  assert.deepEqual(setup.session.queue, ['b1', 'a1']);
+  assert.equal(writes, 0);
+});
+
+test('a session left with nothing to ask after pruning is finished: deleted, and no Resume', async () => {
+  const store = await storeWith([bank('a.quiz', [q('a1')]), bank('b.quiz', [q('b1')])]);
+  await store.sessions.put('pool:a.quiz|b.quiz', savedSession(['gone1', 'gone2']));
+  const setup = await loadSetup(store, ['a.quiz', 'b.quiz']);
+  assert.equal(setup.session, null);
+  assert.equal(await store.sessions.get('pool:a.quiz|b.quiz'), null);
+});

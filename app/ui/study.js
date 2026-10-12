@@ -7,8 +7,9 @@
 // every answer, grade and move goes through the study model, which saves after each one.
 //
 // The screen is redrawn after every model call. Typing in the answer box is not a redraw:
-// it only writes `model.typedAnswer`. The clocks tick in place, once a second, from one
-// interval that stops when the screen is left.
+// it only writes `model.typedAnswer`, and a redraw asked for from outside while the box
+// has the keyboard only patches the banners. The clocks tick in place, once a second, from
+// one interval that stops when the screen is left.
 
 import { el, pillButton, banner } from './components.js';
 import { highlightSegments } from '../engine/keywords.js';
@@ -17,7 +18,7 @@ import { pictureView, pictureOverlay, pictureURL, releasePictures } from './pict
 import {
   formatClock, formatStopwatch, headerText, repeatingText, trackFractions, questionClockMs,
   pauseLine, feedback, distractorNote, keywordLines, hitKeywords, studyActions, ACTION_LABELS,
-  optionState, optionTap, scrollIntent, finishedLines,
+  optionState, optionTap, scrollIntent, finishedLines, skipDeadQuestions,
 } from './studyLogic.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -46,8 +47,38 @@ export function renderStudy(root, { store, drive, state, actions }) {
     exiting = false;
     releasePictures();
   }
+  const sameSession = ctx?.state.session === state.session;
   ctx = { root, store, drive, state, actions };
+  // A redraw from outside (a sync finishing, a banner) while the answer box is being
+  // typed in would rebuild the box under the keyboard. Nothing it changes is in the
+  // question area, so only the banners are brought up to date; the next tap redraws all.
+  if (sameSession && answering()) {
+    patchBanners();
+    return;
+  }
   draw();
+}
+
+/** The answer box is on screen and has the keyboard. */
+function answering() {
+  const box = ctx?.root.querySelector('.answer-box');
+  return Boolean(box && globalThis.document?.activeElement === box);
+}
+
+function bannerArea(state, model) {
+  const banners = el('div', 'banners');
+  if (state.saveError || model.saveError) {
+    const message = state.saveError
+      ?? `Your progress isn't being saved on this phone: ${model.saveError?.message || model.saveError}`;
+    banners.append(banner({ message, tone: 'warn' }));
+  }
+  return banners;
+}
+
+function patchBanners() {
+  const old = ctx.root.querySelector('.study .banners');
+  if (!old || !ctx.state.session) return;
+  old.replaceWith(bannerArea(ctx.state, ctx.state.session.model));
 }
 
 /** Stops the clocks and lets the pictures go. Safe to call when the screen is not up. */
@@ -433,6 +464,8 @@ function draw() {
   if (!ctx?.state.session) return;
   const { root, store, drive, state } = ctx;
   const { model, title } = state.session;
+  // A queued question a sync took away is moved past rather than read as the end.
+  skipDeadQuestions(model);
   const current = model.current;
 
   // What to carry over from the screen being replaced.
@@ -453,13 +486,7 @@ function draw() {
   const screen = el('div', 'screen study');
   screen.append(header(model, title, current));
 
-  const banners = el('div', 'banners');
-  if (state.saveError || model.saveError) {
-    const message = state.saveError
-      ?? `Your progress isn't being saved on this phone: ${model.saveError?.message || model.saveError}`;
-    banners.append(banner({ message, tone: 'warn' }));
-  }
-  screen.append(banners);
+  screen.append(bannerArea(state, model));
 
   if (!current) {
     screen.append(finishedPanel(model));

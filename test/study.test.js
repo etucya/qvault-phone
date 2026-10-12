@@ -6,8 +6,10 @@ import assert from 'node:assert/strict';
 import {
   formatClock, formatStopwatch, headerIndex, headerText, repeatingText, trackFractions,
   questionClockMs, pauseLine, feedback, distractorNote, keywordLines, hitKeywords,
-  studyActions, ACTION_LABELS, optionState, optionTap, scrollIntent, finishedLines,
+  studyActions, ACTION_LABELS, optionState, optionTap, scrollIntent, finishedLines, skipDeadQuestions,
 } from '../app/ui/studyLogic.js';
+import { createStudyModel } from '../app/engine/studyModel.js';
+import { decodeSettings } from '../app/engine/settings.js';
 
 test('the question clock is m:ss with minutes uncapped', () => {
   assert.equal(formatClock(0), '0:00');
@@ -147,4 +149,49 @@ test('the finished panel counts and the session time', () => {
     counts: '6 of 6 cleared',
     time: '4:12 studying',
   });
+});
+
+// ---------------------------------------------------------------------------------------
+// Dead ids: a queued id whose question is gone
+
+const liveQuestion = (id) => ({
+  id, type: 'mcq', prompt: `Prompt ${id}`, answer: 'A', keywords: [], tags: [], flagged: false,
+  options: [{ letter: 'A', text: 'yes' }, { letter: 'B', text: 'no' }], stats: { attempts: [] },
+});
+
+// Resumed with a shuffle that keeps the saved order (random 0.99 never swaps), so a dead id
+// stays where it was put rather than being sorted to the end.
+function modelOver(questions, queue) {
+  const session = {
+    startedAt: new Date(0), settings: decodeSettings({ order: 'shuffle' }), queue, position: 0,
+    retired: [], missed: [], streaks: {}, availableAt: {}, answered: 0, activeMs: 0,
+  };
+  return createStudyModel({
+    set: { name: 'S', questions, session }, settings: session.settings, resume: true,
+    persist: () => {}, remove: () => {}, now: () => new Date(1000), random: () => 0.99,
+  });
+}
+
+test('a dead id at the front of the queue is skipped to the next live question', () => {
+  const model = modelOver([liveQuestion('live')], ['gone', 'live']);
+  assert.equal(model.current, null);
+  assert.equal(model.isFinished(), false);
+  assert.equal(skipDeadQuestions(model), 1);
+  assert.equal(model.current.id, 'live');
+});
+
+test('a queue that is dead all the way through stops after one pass, with nothing current', () => {
+  const model = modelOver([liveQuestion('other')], ['gone1', 'gone2', 'gone3']);
+  assert.equal(skipDeadQuestions(model), 3);
+  assert.equal(model.current, null);
+});
+
+test('nothing is skipped while a question is current or once finished', () => {
+  const model = modelOver([liveQuestion('a')], ['a']);
+  assert.equal(skipDeadQuestions(model), 0);
+  assert.equal(model.current.id, 'a');
+  let skips = 0;
+  const finished = { current: null, isFinished: () => true, progress: () => ({ cleared: 1, total: 1 }), skip: () => { skips += 1; } };
+  assert.equal(skipDeadQuestions(finished), 0);
+  assert.equal(skips, 0);
 });

@@ -171,3 +171,24 @@ export function finishedLines({ cleared, total }, activeMs) {
     time: `${formatStopwatch(activeMs)} studying`,
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// Questions that are no longer there
+
+/**
+ * Moves the model past queued ids whose question is no longer in the set (a sync took it
+ * away), so the screen does not show Done with questions still to go. Skips at most once
+ * per queued question, so a queue that is dead all the way through cannot loop: it stops
+ * with nothing current, and the screen shows Done. Returns how many were skipped.
+ */
+export function skipDeadQuestions(model) {
+  if (model.current || model.isFinished()) return 0;
+  const { cleared, total } = model.progress();
+  const queued = Math.max(0, total - cleared);
+  let skipped = 0;
+  while (skipped < queued && !model.current && !model.isFinished()) {
+    model.skip();
+    skipped += 1;
+  }
+  return skipped;
+}

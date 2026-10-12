@@ -7,6 +7,7 @@ import { decodeSettings, encodeSettings, questionsTagged, scopedIDs, delayMode }
 import { decodeState, encodeState } from '../engine/sessionEngine.js';
 import { buildPool, writeBack } from '../engine/pool.js';
 import { createStudyModel } from '../engine/studyModel.js';
+import { pruneSession } from '../sync.js';
 import { bankName } from './library.js';
 import { plural } from './components.js';
 
@@ -160,8 +161,26 @@ export async function loadSetup(store, paths) {
     // A session that cannot be read is treated as none; starting replaces it.
     session = null;
   }
+  if (session) session = await pruneSavedSession(store, key, session, questions);
 
   return { key, paths: banks.map((bank) => bank.path), title, banks, pool, questions, settings, session };
+}
+
+/**
+ * The saved session with every question the set no longer holds taken out, saved back
+ * when that changed anything. Sync prunes a single bank's session itself, but a pool's
+ * session (under its `pool:` key) is only seen here. A session left with nothing to ask
+ * is finished: it is deleted and null comes back.
+ */
+async function pruneSavedSession(store, key, session, questions) {
+  const pruned = pruneSession(session, questions.map((q) => q.id));
+  if (pruned.queue.length === 0) {
+    await store.sessions.delete(key);
+    return null;
+  }
+  const encoded = encodeState(pruned);
+  if (JSON.stringify(encoded) !== JSON.stringify(encodeState(session))) await store.sessions.put(key, encoded);
+  return pruned;
 }
 
 /** A copy of `bank` with every answer it has recorded erased. */

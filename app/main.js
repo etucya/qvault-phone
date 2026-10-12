@@ -13,6 +13,7 @@ import { planPrefetch, runPrefetch, PREFETCH_AT_ONCE } from './prefetch.js';
 import { renderLibrary } from './ui/library.js';
 import { renderSetup, newSetupState } from './ui/setup.js';
 import { renderStudy, stopStudy } from './ui/study.js';
+import { el, banner, pillButton } from './ui/components.js';
 
 const root = document.getElementById('app');
 
@@ -24,6 +25,7 @@ const state = {
   syncing: false,
   error: null,
   warning: null,
+  storageWarning: null, // the store fell back to memory: pinned for the whole run
   account: null,
   lastSync: null,
   banks: null, // the store's bank list, cached between renders; null means "read again"
@@ -31,6 +33,7 @@ const state = {
   session: null, // {model, key, title, flush} once a study session has started
   saveError: null,
   prefetch: { remaining: 0 }, // background picture fetching, shown in the library's status line
+  syncDue: false, // a re-sync held back while studying, run on the next return to the library
 };
 
 let store;
@@ -62,10 +65,42 @@ async function render() {
     await renderLibrary(root, { store, state, actions });
     // The setup sheet sits over the library.
     if (state.route === 'setup' && state.setup) await renderSetup(root, { store, state, actions });
+    if (state.route === 'library' && state.syncDue) {
+      state.syncDue = false;
+      syncIfSignedIn();
+    }
   } catch (error) {
     console.error(error);
-    state.error = `Could not show the library: ${describe(error)}`;
+    state.error = `Could not show this screen: ${describe(error)}`;
+    renderError();
   }
+}
+
+/** What is left on screen when drawing failed: the error, and a way back to the library. */
+function renderError() {
+  const screen = el('div', 'screen');
+  const box = el('div', 'banners');
+  if (state.storageWarning) box.append(banner({ message: state.storageWarning, tone: 'bad' }));
+  box.append(banner({ message: state.error, tone: 'bad' }));
+  const centre = el('div', 'centre');
+  centre.append(
+    pillButton({
+      label: 'Back to library',
+      style: 'primary',
+      onTap: () => {
+        // The session (if any) is in the store already; the library offers Resume.
+        stopStudy();
+        state.route = 'library';
+        state.setup = null;
+        state.session = null;
+        state.banks = null;
+        state.error = null;
+        render();
+      },
+    }),
+  );
+  screen.append(box, centre);
+  root.replaceChildren(screen);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -159,6 +194,20 @@ async function prefetchPictures() {
   }
 }
 
+/**
+ * The Sync button and pull-to-refresh. Without a token to be had (never signed in, or the
+ * silent renewal failed), this signs in, which syncs after, rather than letting the sync
+ * fail with a "not signed in" banner.
+ */
+async function syncNow() {
+  if (state.syncing) return false;
+  if (navigator.onLine && (await auth.getToken()) === null) {
+    await signIn();
+    return false;
+  }
+  return sync();
+}
+
 async function signIn() {
   try {
     await auth.signIn();
@@ -183,7 +232,7 @@ function goToSetup(paths) {
 
 const actions = {
   render,
-  sync,
+  sync: syncNow,
   signIn,
   openBank: (path) => goToSetup([path]),
   studyBanks: (paths) => goToSetup(paths),
@@ -196,7 +245,7 @@ async function openPhoneStore() {
   try {
     return await openStore(await indexedDBAdapter());
   } catch (error) {
-    state.error = `Could not open storage on this phone, so nothing will be kept: ${describe(error)}`;
+    state.storageWarning = `Could not open storage on this phone, so nothing will be kept: ${describe(error)}`;
     return openStore(memoryAdapter());
   }
 }
@@ -226,8 +275,9 @@ async function launch() {
   // For debugging from the console (seeding a bank, inspecting state).
   globalThis.qvault = { store, state, render, actions };
 
-  // A token comes back without a tap only for someone who signed in before; otherwise
-  // getToken is null and the first-run panel waits for the Sign in button.
+  // A token comes back without a tap only for someone who signed in before (auth remembers
+  // the consent across launches); otherwise getToken is null and the first-run panel waits
+  // for the Sign in button.
   await syncIfSignedIn();
 }
 
@@ -242,7 +292,9 @@ async function syncIfSignedIn() {
   }
 }
 
-// Coming back to the app after a while away: bring the library up to date.
+// Coming back to the app after a while away: bring the library up to date. Not in the
+// middle of studying, though (a sync rewrites banks under the open session); it waits for
+// the next return to the library instead.
 const RESYNC_AFTER_MS = 10 * 60 * 1000;
 let hiddenAt = null;
 document.addEventListener('visibilitychange', () => {
@@ -252,7 +304,9 @@ document.addEventListener('visibilitychange', () => {
   }
   const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
   hiddenAt = null;
-  if (away > RESYNC_AFTER_MS) syncIfSignedIn();
+  if (away <= RESYNC_AFTER_MS) return;
+  if (state.route === 'study') state.syncDue = true;
+  else syncIfSignedIn();
 });
 
 if ('serviceWorker' in navigator) {

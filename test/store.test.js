@@ -198,3 +198,42 @@ for (const [adapterName, makeAdapter] of Object.entries(adapters)) {
     assert.deepEqual(calls.get, []);
   });
 }
+
+// iOS closes a backgrounded page's IndexedDB connection without asking. The adapter must
+// notice and carry on with a fresh connection rather than fail every call from then on.
+test('indexedDB: a connection closed underneath the adapter is reopened and the put succeeds', async () => {
+  const opened = [];
+  const adapter = await indexedDBAdapter(`qvault-test-${dbCounter++}`, { onOpen: (db) => opened.push(db) });
+  await adapter.put('meta', 'before', 1);
+  assert.equal(opened.length, 1);
+
+  // Closed without the adapter being told: the next transaction throws InvalidStateError.
+  opened[0].close();
+  await adapter.put('meta', 'after', 2);
+  assert.equal(opened.length, 2, 'reopened once');
+  assert.equal(await adapter.get('meta', 'before'), 1);
+  assert.equal(await adapter.get('meta', 'after'), 2);
+});
+
+test('indexedDB: a connection the browser reports closed (onclose) is reopened before the next call', async () => {
+  const opened = [];
+  const adapter = await indexedDBAdapter(`qvault-test-${dbCounter++}`, { onOpen: (db) => opened.push(db) });
+  await adapter.put('sessions', 'A.quiz', { q: 1 });
+
+  opened[0].close();
+  opened[0].onclose(); // what iOS fires when it drops the connection
+  await adapter.put('sessions', 'B.quiz', { q: 2 });
+  assert.equal(opened.length, 2);
+  assert.deepEqual((await adapter.keys('sessions')).sort(), ['A.quiz', 'B.quiz']);
+  // Concurrent calls on a dead connection share one reopen.
+  opened[1].onclose();
+  await Promise.all([adapter.get('sessions', 'A.quiz'), adapter.get('sessions', 'B.quiz'), adapter.has('sessions', 'A.quiz')]);
+  assert.equal(opened.length, 3);
+});
+
+test('indexedDB: an error that is not a lost connection is not retried', async () => {
+  const opened = [];
+  const adapter = await indexedDBAdapter(`qvault-test-${dbCounter++}`, { onOpen: (db) => opened.push(db) });
+  await assert.rejects(adapter.get('no-such-store', 'x'), (error) => error.name === 'NotFoundError');
+  assert.equal(opened.length, 1);
+});

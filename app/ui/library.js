@@ -272,6 +272,8 @@ function topBar(folder, { state, actions }) {
 
 function banners({ state, actions }) {
   const box = el('div', 'banners');
+  // Pinned for the whole run: nothing studied here will be kept.
+  if (state.storageWarning) box.append(banner({ message: state.storageWarning, tone: 'bad' }));
   if (state.error) {
     const needsSignIn = /unauthori[sz]ed/i.test(state.error);
     box.append(

@@ -1,12 +1,15 @@
 // Google sign-in through Google Identity Services' token client (the GIS script is loaded by
 // index.html). Tokens live in memory only and last about an hour; getToken() renews them
-// silently while it can. Every touch of the `google` global is guarded so this module also
+// silently while it can. That consent was once granted is remembered in localStorage (it is
+// not a secret), so a cold launch of the home-screen app tries for a token without a tap,
+// and a later sign-in skips the consent screen. Every touch of the `google` global is guarded so this module also
 // imports in Node.
 
 const DRIVE_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
 const USERINFO = 'https://www.googleapis.com/oauth2/v3/userinfo';
 const ABOUT = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)';
 const EMAIL_KEY = 'qvault.account';
+const CONSENT_KEY = 'qvault.consented';
 const SILENT_TIMEOUT_MS = 5000;
 const REVOKE_TIMEOUT_MS = 5000;
 const EXPIRY_MARGIN_MS = 60_000;
@@ -43,7 +46,7 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
   let token = null;
   let expiresAt = 0;
   let email = read(EMAIL_KEY);
-  let consented = false; // in memory only: a token was granted in this page's lifetime
+  let consented = read(CONSENT_KEY) === 'true'; // a token has been granted before, here or in an earlier launch
   let pending = null; // { resolve, reject } for the request in flight
   let refreshing = null; // the one silent refresh in flight, shared by concurrent getToken callers
   let signingIn = null; // the one interactive sign-in in flight, shared by concurrent signIn callers
@@ -68,6 +71,7 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
         }
         token = response.access_token;
         expiresAt = Date.now() + (Number(response.expires_in) || 3600) * 1000 - EXPIRY_MARGIN_MS;
+        if (!consented) write(CONSENT_KEY, 'true');
         consented = true;
         settle('resolve', token);
       },
@@ -118,7 +122,10 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
   const fresh = () => token !== null && Date.now() < expiresAt;
 
   async function interactiveSignIn() {
-    const accessToken = await request('consent');
+    // Consent given before: ask without the consent screen first, and only show it when
+    // that comes back empty (consent revoked, another account, a closed popup).
+    let accessToken = consented ? await silentRefresh() : null;
+    if (accessToken === null) accessToken = await request('consent');
     if (!email) {
       const found = await lookUpEmail(accessToken);
       if (found) {
@@ -144,7 +151,7 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
   }
 
   return {
-    /** Interactive sign-in (always shows consent). Resolves to an access token. */
+    /** Interactive sign-in: consent the first time, a silent try first after that. Resolves to an access token. */
     signIn() {
       if (fresh()) return Promise.resolve(token);
       if (!signingIn) {
@@ -177,6 +184,7 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
       email = null;
       client = null;
       consented = false;
+      write(CONSENT_KEY, null);
       refreshing = null;
       signingIn = null;
       settle('reject', new Error('Signed out'));
