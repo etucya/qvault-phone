@@ -818,3 +818,54 @@ test('theQuestionClockRunsUntilPausedAndRestartsForEachQuestion', () => {
   m.skip();
   assert.equal(m.questionElapsedMs(at(66)), 1_000);
 });
+
+// MARK: - Phone-only guards: a double tap must not grade the next question
+
+test('choosingTwiceRecordsOneAnswerAndLeavesTheNextQuestionAlone', () => {
+  const d = disk();
+  const m = model(3, d);
+  m.choose('A');
+  m.choose('B');
+  assert.equal(d.question('q1').stats.attempts.length, 1);
+  assert.equal(d.question('q2').stats.attempts.length, 0);
+  assert.equal(m.chosen, 'A');
+  assert.equal(m.current.id, 'q1');
+});
+
+test('dontKnowAfterRevealIsIgnored', () => {
+  const d = disk();
+  const m = model(2, d);
+  m.choose('A');
+  m.dontKnow();
+  assert.equal(d.question('q1').stats.attempts.length, 1);
+  assert.equal(m.lastOutcome, 'correct');
+});
+
+test('gradeBeforeRevealOrAfterAnOutcomeIsIgnored', () => {
+  const d = disk();
+  const m = createStudyModel({
+    set: quizSet('T', [open('o1', 'Why?', 'because of x', ['x']), open('o2', 'How?')]),
+    settings: writtenSettings, now: () => at(1_000), persist: d.persist, remove: d.remove,
+  });
+  m.grade('correct');                       // nothing revealed yet
+  assert.equal(d.saves, 0);
+  m.typedAnswer = 'x';
+  m.reveal();
+  m.grade('correct');
+  m.grade('wrong');                         // already graded; must not touch o2
+  assert.equal(d.question('o1').stats.attempts.length, 1);
+  assert.equal(d.question('o2').stats.attempts.length, 0);
+  assert.equal(m.current.id, 'o1');
+});
+
+test('dontKnowOnAnOpenQuestionStillCountsTheKeyTerms', () => {
+  const d = disk();
+  const m = createStudyModel({
+    set: quizSet('T', [open('o1', 'Why?', 'because of x and y', ['x', 'y'])]),
+    settings: writtenSettings, now: () => at(1_000), persist: d.persist, remove: d.remove,
+  });
+  m.typedAnswer = 'x';
+  m.dontKnow();
+  assert.equal(m.revealed, true);
+  assert.deepEqual(m.hits.map((h) => h.hit), [true, false]);
+});

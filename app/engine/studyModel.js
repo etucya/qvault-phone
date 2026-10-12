@@ -196,7 +196,9 @@ export function createStudyModel({
     /** Grades the shown letter against the shown answer, records the written letter, reveals. */
     choose(letter) {
       const shown = model.current;
-      if (!shown) return;
+      // Once revealed, a second tap must not grade the engine's next question. The Mac's
+      // view gates this; on a phone a double-tap is easy, so the model gates it too.
+      if (!shown || model.revealed) return;
       model.chosen = letter;
       model.revealed = true;
       record(letter === shown.answer ? 'correct' : 'wrong', model.chosenAsWritten);
@@ -214,6 +216,7 @@ export function createStudyModel({
 
     /** Grades a revealed open question. Anything but correct moves on at once. */
     grade(outcome) {
+      if (!model.revealed || model.lastOutcome !== null) return;
       record(outcome, null);
       if (outcome !== 'correct') resetForNextQuestion();
       save();
@@ -221,7 +224,12 @@ export function createStudyModel({
 
     /** Records "don't know" with no choice and reveals. Does not advance. */
     dontKnow() {
+      if (model.revealed) return;
       model.revealed = true;
+      revealedAtMs = elapsedMs();
+      if (currentQuestion?.type === 'open') {
+        model.hits = keywordHits(model.typedAnswer, currentQuestion.keywords ?? []);
+      }
       record('dontknow', null);
       save();
     },
