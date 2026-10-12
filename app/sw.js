@@ -3,7 +3,7 @@
 // launch; the cache answers only when the network does not. Bump VERSION whenever the
 // list changes. Google's sign-in and Drive requests are never touched.
 
-const VERSION = 'qvault-v2';
+const VERSION = 'qvault-v3';
 
 // Every file under app/ except this one. test/shell.test.js checks the list against disk.
 const SHELL = [
@@ -26,6 +26,9 @@ const SHELL = [
   './ui/library.js',
   './ui/setup.js',
   './ui/setupLogic.js',
+  './ui/study.js',
+  './ui/studyLogic.js',
+  './ui/picture.js',
   './engine/dates.js',
   './engine/keywords.js',
   './engine/optionOrder.js',

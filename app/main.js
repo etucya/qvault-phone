@@ -11,7 +11,7 @@ import { createDrive } from './drive.js';
 import { syncLibrary } from './sync.js';
 import { renderLibrary } from './ui/library.js';
 import { renderSetup, newSetupState } from './ui/setup.js';
-import { el, pillButton, banner } from './ui/components.js';
+import { renderStudy, stopStudy } from './ui/study.js';
 
 const root = document.getElementById('app');
 
@@ -43,43 +43,14 @@ function describe(error) {
 // ---------------------------------------------------------------------------------------
 // Screens
 
-// Task 10 replaces this with the study screen.
-function renderStudyPlaceholder() {
-  const { model, title } = state.session;
-  const screen = el('div', 'screen');
-  const bar = el('header', 'topbar');
-  bar.append(el('h1', 'title', title));
-  const banners = el('div', 'banners');
-  if (state.saveError) banners.append(banner({ message: state.saveError }));
-  const centre = el('div', 'centre');
-  const panel = el('div', 'panel hero');
-  const current = model.current;
-  panel.append(
-    el('p', 'hero-text', 'Study — coming next'),
-    el('p', 'study-prompt', current ? current.prompt : 'Nothing left to study in this session.'),
-    pillButton({
-      label: 'Back to library',
-      style: 'secondary',
-      onTap: () => {
-        // The session stays saved, so the bank offers Resume next time.
-        state.route = 'library';
-        state.banks = null;
-        render();
-      },
-    }),
-  );
-  centre.append(panel);
-  screen.append(bar, banners, centre);
-  root.replaceChildren(screen);
-}
-
 async function render() {
   if (!store) return;
   try {
     if (state.route === 'study' && state.session) {
-      renderStudyPlaceholder();
+      renderStudy(root, { store, drive, state, actions });
       return;
     }
+    stopStudy();
     await renderLibrary(root, { store, state, actions });
     // The setup sheet sits over the library.
     if (state.route === 'setup' && state.setup) await renderSetup(root, { store, state, actions });
