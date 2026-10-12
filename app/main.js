@@ -9,8 +9,9 @@ import { memoryAdapter } from './storeMemory.js';
 import { createAuth } from './auth.js';
 import { createDrive } from './drive.js';
 import { syncLibrary } from './sync.js';
-import { renderLibrary, bankName } from './ui/library.js';
-import { el, pillButton, plural } from './ui/components.js';
+import { renderLibrary } from './ui/library.js';
+import { renderSetup, newSetupState } from './ui/setup.js';
+import { el, pillButton, banner } from './ui/components.js';
 
 const root = document.getElementById('app');
 
@@ -25,7 +26,9 @@ const state = {
   account: null,
   lastSync: null,
   banks: null, // the store's bank list, cached between renders; null means "read again"
-  setupPaths: [],
+  setup: null, // the setup sheet's own state while it is open (ui/setup.js)
+  session: null, // {model, key, title, flush} once a study session has started
+  saveError: null,
 };
 
 let store;
@@ -40,37 +43,46 @@ function describe(error) {
 // ---------------------------------------------------------------------------------------
 // Screens
 
-function renderSetupPlaceholder() {
+// Task 10 replaces this with the study screen.
+function renderStudyPlaceholder() {
+  const { model, title } = state.session;
   const screen = el('div', 'screen');
   const bar = el('header', 'topbar');
-  const names = state.setupPaths.map((path) => {
-    const bank = state.banks?.find((b) => b.path === path);
-    return bank ? bankName(bank) : path;
-  });
-  bar.append(el('h1', 'title', names.length === 1 ? names[0] : plural(names.length, 'bank')));
+  bar.append(el('h1', 'title', title));
+  const banners = el('div', 'banners');
+  if (state.saveError) banners.append(banner({ message: state.saveError }));
   const centre = el('div', 'centre');
   const panel = el('div', 'panel hero');
+  const current = model.current;
   panel.append(
-    el('p', 'hero-text', 'Setup — coming next'),
+    el('p', 'hero-text', 'Study — coming next'),
+    el('p', 'study-prompt', current ? current.prompt : 'Nothing left to study in this session.'),
     pillButton({
       label: 'Back to library',
       style: 'secondary',
       onTap: () => {
+        // The session stays saved, so the bank offers Resume next time.
         state.route = 'library';
+        state.banks = null;
         render();
       },
     }),
   );
   centre.append(panel);
-  screen.append(bar, centre);
+  screen.append(bar, banners, centre);
   root.replaceChildren(screen);
 }
 
 async function render() {
   if (!store) return;
   try {
-    if (state.route === 'setup') renderSetupPlaceholder();
-    else await renderLibrary(root, { store, state, actions });
+    if (state.route === 'study' && state.session) {
+      renderStudyPlaceholder();
+      return;
+    }
+    await renderLibrary(root, { store, state, actions });
+    // The setup sheet sits over the library.
+    if (state.route === 'setup' && state.setup) await renderSetup(root, { store, state, actions });
   } catch (error) {
     console.error(error);
     state.error = `Could not show the library: ${describe(error)}`;
@@ -121,7 +133,7 @@ async function signIn() {
 }
 
 function goToSetup(paths) {
-  state.setupPaths = paths;
+  state.setup = newSetupState(paths);
   state.selecting = false;
   state.selected = new Set();
   state.route = 'setup';
