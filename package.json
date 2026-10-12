@@ -6,5 +6,8 @@
   "scripts": {
     "test": "node --test test/",
     "serve": "python3 -m http.server 8787 --directory app"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
   }
 }
