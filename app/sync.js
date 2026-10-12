@@ -52,6 +52,10 @@ export function pruneSession(state, questionIds) {
   const list = (ids) => (ids ?? []).filter((id) => keep.has(id));
   const map = (object) => Object.fromEntries(Object.entries(object ?? {}).filter(([id]) => keep.has(id)));
   const queue = list(state.queue);
+  // Removed ids that sat before the cursor shift it back (as sessionEngine's removeQuestion does).
+  const cursor = Math.max(0, state.position ?? 0);
+  const removedBefore = (state.queue ?? []).slice(0, cursor).filter((id) => !keep.has(id)).length;
+  const position = cursor - removedBefore;
   return {
     ...state,
     queue,
@@ -59,7 +63,7 @@ export function pruneSession(state, questionIds) {
     missed: list(state.missed),
     streaks: map(state.streaks),
     availableAt: map(state.availableAt),
-    position: state.position >= 0 && state.position < queue.length ? state.position : 0,
+    position: position < queue.length ? position : 0,
   };
 }
 

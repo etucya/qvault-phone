@@ -7,8 +7,8 @@ const DRIVE_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
 const USERINFO = 'https://www.googleapis.com/oauth2/v3/userinfo';
 const ABOUT = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)';
 const EMAIL_KEY = 'qvault.account';
-const CONSENTED_KEY = 'qvault.consented';
 const SILENT_TIMEOUT_MS = 5000;
+const REVOKE_TIMEOUT_MS = 5000;
 const EXPIRY_MARGIN_MS = 60_000;
 
 const oauth2 = () => globalThis.google?.accounts?.oauth2 ?? null;
@@ -43,7 +43,10 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
   let token = null;
   let expiresAt = 0;
   let email = read(EMAIL_KEY);
+  let consented = false; // in memory only: a token was granted in this page's lifetime
   let pending = null; // { resolve, reject } for the request in flight
+  let refreshing = null; // the one silent refresh in flight, shared by concurrent getToken callers
+  let signingIn = null; // the one interactive sign-in in flight, shared by concurrent signIn callers
 
   function settle(outcome, value) {
     const waiting = pending;
@@ -65,7 +68,7 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
         }
         token = response.access_token;
         expiresAt = Date.now() + (Number(response.expires_in) || 3600) * 1000 - EXPIRY_MARGIN_MS;
-        write(CONSENTED_KEY, '1');
+        consented = true;
         settle('resolve', token);
       },
       error_callback: (error) => {
@@ -114,37 +117,57 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
 
   const fresh = () => token !== null && Date.now() < expiresAt;
 
-  return {
-    /** Interactive sign-in; asks for consent the first time only. Resolves to an access token. */
-    async signIn() {
-      const accessToken = await request(read(CONSENTED_KEY) ? '' : 'consent');
-      if (!email) {
-        const found = await lookUpEmail(accessToken);
-        if (found) {
-          email = found;
-          write(EMAIL_KEY, found);
-        }
+  async function interactiveSignIn() {
+    const accessToken = await request('consent');
+    if (!email) {
+      const found = await lookUpEmail(accessToken);
+      if (found) {
+        email = found;
+        write(EMAIL_KEY, found);
       }
-      return accessToken;
+    }
+    return accessToken;
+  }
+
+  function silentRefresh() {
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        // Drop the request that never answered so the next attempt starts clean.
+        settle('reject', new Error('Silent sign-in timed out'));
+        resolve(null);
+      }, SILENT_TIMEOUT_MS);
+    });
+    return Promise.race([request(''), timeout])
+      .catch(() => null)
+      .finally(() => clearTimeout(timer));
+  }
+
+  return {
+    /** Interactive sign-in (always shows consent). Resolves to an access token. */
+    signIn() {
+      if (fresh()) return Promise.resolve(token);
+      if (!signingIn) {
+        const flight = interactiveSignIn().finally(() => {
+          if (signingIn === flight) signingIn = null;
+        });
+        signingIn = flight;
+      }
+      return signingIn;
     },
 
     /** A live token, renewing silently when it can; null when the user has to tap sign-in. */
     async getToken() {
       if (fresh()) return token;
-      if (!oauth2() || !read(CONSENTED_KEY)) return null;
-      let timer;
-      try {
-        return await Promise.race([
-          request(''),
-          new Promise((resolve) => {
-            timer = setTimeout(() => resolve(null), SILENT_TIMEOUT_MS);
-          }),
-        ]);
-      } catch {
-        return null;
-      } finally {
-        clearTimeout(timer);
+      if (signingIn) return signingIn.catch(() => null);
+      if (!oauth2() || !consented) return null;
+      if (!refreshing) {
+        const flight = silentRefresh().finally(() => {
+          if (refreshing === flight) refreshing = null;
+        });
+        refreshing = flight;
       }
+      return refreshing;
     },
 
     async signOut() {
@@ -153,17 +176,28 @@ export function createAuth({ clientId, scope = DRIVE_READONLY } = {}) {
       expiresAt = 0;
       email = null;
       client = null;
+      consented = false;
+      refreshing = null;
+      signingIn = null;
+      settle('reject', new Error('Signed out'));
       write(EMAIL_KEY, null);
-      write(CONSENTED_KEY, null);
       const gis = oauth2();
       if (old && gis?.revoke) {
-        await new Promise((resolve) => {
-          try {
-            gis.revoke(old, () => resolve());
-          } catch {
-            resolve();
-          }
-        });
+        let timer;
+        await Promise.race([
+          new Promise((resolve) => {
+            try {
+              gis.revoke(old, () => resolve());
+            } catch {
+              resolve();
+            }
+          }),
+          // Offline, the revoke callback may never come; do not hang the sign-out on it.
+          new Promise((resolve) => {
+            timer = setTimeout(resolve, REVOKE_TIMEOUT_MS);
+          }),
+        ]);
+        clearTimeout(timer);
       }
     },
 

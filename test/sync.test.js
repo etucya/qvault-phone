@@ -164,6 +164,16 @@ test('pruneSession sets the position to 0 when it falls past the end of the queu
   assert.equal(empty.position, 0);
 });
 
+test('pruneSession moves the cursor back by the removed ids that sat before it', () => {
+  const pruned = pruneSession(session(['a', 'x', 'b', 'y', 'c', 'd'], { position: 4 }), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(pruned.queue, ['a', 'b', 'c', 'd']);
+  assert.equal(pruned.position, 2, 'still on c');
+  const after = pruneSession(session(['a', 'b', 'x', 'c'], { position: 1 }), ['a', 'b', 'c']);
+  assert.equal(after.position, 1, 'removals after the cursor leave it alone');
+  const atRemoved = pruneSession(session(['a', 'x', 'b'], { position: 1 }), ['a', 'b']);
+  assert.equal(atRemoved.position, 1, 'the question now under the cursor is the next one, b');
+});
+
 // syncLibrary
 
 test('first sync finds the folder, adds every bank, and records the folder, media index and time', async () => {
@@ -217,7 +227,7 @@ test('a changed bank is merged: phone stats, flag and note survive by id; remove
   assert.deepEqual(kept.queue, ['q2', 'q1']);
   assert.deepEqual(kept.missed, []);
   assert.deepEqual(kept.streaks, {});
-  assert.equal(kept.position, 0, 'position 2 is past the end of a two-question queue');
+  assert.equal(kept.position, 1, 'q3 sat before the cursor, so it moves from 2 to 1 and still points at q1');
 });
 
 test('a bank gone from Drive is removed with its session and settings', async () => {
@@ -330,4 +340,23 @@ test('fetchPicture returns null for an unknown name or a failed download, and ne
   fake.failWith(500);
   assert.equal(await fetchPicture({ drive, store, name: 'abc.png' }), null);
   assert.equal(await store.pictures.has('abc.png'), false, 'nothing cached, so it is retried next time');
+});
+
+test('a listing that fails partway through leaves every stored bank untouched', async () => {
+  const { fake, store, drive } = await setup();
+  await syncLibrary({ drive, store });
+  const before = await store.banks.list();
+  const blood = await store.banks.get('Biology/Blood.quiz');
+  const lastSync = await store.meta.get('lastSync');
+
+  // The bank on Drive changed, so a clean sync would rewrite it; break the listing instead.
+  fake.setContent('blood', quizText({ name: 'Blood', questions: [question('q9')] }), 'b2');
+  fake.calls.length = 0;
+  fake.failAfter(2);
+  await assert.rejects(syncLibrary({ drive, store }), /503/);
+  assert.ok(fake.calls.length >= 3, 'the failure came after some requests succeeded');
+
+  assert.deepEqual(await store.banks.list(), before);
+  assert.deepEqual(await store.banks.get('Biology/Blood.quiz'), blood);
+  assert.equal(await store.meta.get('lastSync'), lastSync);
 });

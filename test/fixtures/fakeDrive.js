@@ -9,6 +9,7 @@ export function fakeDrive({ pageSize = 2 } = {}) {
   const calls = [];
   let nextId = 1;
   let status = null; // when set, every request answers with this status
+  let failAt = null; // when set, the request with this 1-based number (and later ones) answers 503
 
   const drive = {
     calls,
@@ -44,10 +45,15 @@ export function fakeDrive({ pageSize = 2 } = {}) {
     failWith(code) {
       status = code;
     },
+    /** Every request after the first `n` answers 503 (a listing that breaks partway through). */
+    failAfter(n) {
+      failAt = calls.length + n + 1;
+    },
     downloads: () => calls.filter((c) => c.url.searchParams.get('alt') === 'media').length,
     async fetch(input, init = {}) {
       const url = new URL(String(input));
       calls.push({ url, init });
+      if (failAt !== null && calls.length >= failAt) return new Response('{"error":{}}', { status: 503 });
       if (status !== null) return new Response('{"error":{}}', { status });
       if (!init.headers?.Authorization?.startsWith('Bearer ')) return new Response('', { status: 401 });
 
