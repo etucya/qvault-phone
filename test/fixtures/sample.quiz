@@ -1,0 +1,207 @@
+{
+  "created": "2026-10-12T12:00:00Z",
+  "modified": "2026-10-12T12:00:00Z",
+  "name": "Sample Bank",
+  "questions": [
+    {
+      "answer": "E",
+      "explanation": "Plasma is interstitial fluid plus dissolved proteins.",
+      "flagged": false,
+      "id": "a1",
+      "keywords": [],
+      "options": [
+        {
+          "letter": "A",
+          "text": "urine."
+        },
+        {
+          "letter": "B",
+          "text": "isotonic saline solution."
+        },
+        {
+          "letter": "C",
+          "text": "sterile water."
+        },
+        {
+          "letter": "D",
+          "text": "CSF."
+        },
+        {
+          "letter": "E",
+          "text": "interstitial fluid."
+        }
+      ],
+      "prompt": "Plasma is closest in composition to",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Blood"
+      ],
+      "type": "mcq"
+    },
+    {
+      "answer": "B",
+      "explanation": "LPS is a Gram-negative outer membrane component.",
+      "flagged": false,
+      "id": "a2",
+      "keywords": [],
+      "options": [
+        {
+          "letter": "A",
+          "text": "True"
+        },
+        {
+          "letter": "B",
+          "text": "False"
+        }
+      ],
+      "prompt": "LPS is found in the outer membrane of Gram-positive bacteria.",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Cell wall"
+      ],
+      "type": "tf"
+    },
+    {
+      "answerText": "Organisms too small to be seen with the naked eye, including bacteria, archaea, fungi, protozoa, algae, helminths, and acellular agents like viruses, viroids, and prions.",
+      "flagged": false,
+      "id": "a3",
+      "keywords": [
+        "bacteria",
+        "archaea",
+        "fungi",
+        "protozoa",
+        "algae",
+        "helminths",
+        "viruses"
+      ],
+      "options": [],
+      "prompt": "What are microorganisms?",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Intro"
+      ],
+      "type": "open"
+    },
+    {
+      "answer": "B",
+      "explanation": "It is the retromandibular vein.",
+      "flagged": false,
+      "id": "a4",
+      "image": "veins-occluded.png",
+      "keywords": [],
+      "options": [
+        {
+          "letter": "A",
+          "text": "Facial vein"
+        },
+        {
+          "letter": "B",
+          "text": "Retromandibular vein"
+        },
+        {
+          "letter": "C",
+          "text": "Common facial vein"
+        },
+        {
+          "letter": "D",
+          "text": "Internal jugular vein"
+        }
+      ],
+      "prompt": "Which structure is under the orange box?",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Head and neck",
+        "Occlusion"
+      ],
+      "type": "mcq"
+    },
+    {
+      "answer": "A",
+      "explanation": "The circled vessel is the facial vein.",
+      "flagged": false,
+      "id": "a5",
+      "image": "veins-marked.png",
+      "keywords": [],
+      "options": [
+        {
+          "letter": "A",
+          "text": "Common facial vein"
+        },
+        {
+          "letter": "B",
+          "text": "External jugular vein"
+        },
+        {
+          "letter": "C",
+          "text": "Subclavian vein"
+        },
+        {
+          "letter": "D",
+          "text": "Brachiocephalic vein"
+        }
+      ],
+      "prompt": "What does the vein circled in orange drain into?",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Head and neck"
+      ],
+      "type": "mcq"
+    },
+    {
+      "answer": "B",
+      "flagged": false,
+      "id": "a6",
+      "keywords": [],
+      "options": [
+        {
+          "letter": "A",
+          "text": "A only"
+        },
+        {
+          "letter": "B",
+          "text": "Both A and C"
+        },
+        {
+          "letter": "C",
+          "text": "Neither"
+        },
+        {
+          "letter": "D",
+          "text": "All of the above"
+        }
+      ],
+      "prompt": "Which of the following is true of both A and C?",
+      "stats": {
+        "attempts": [],
+        "correct": 0,
+        "seen": 0
+      },
+      "tags": [
+        "Tricky"
+      ],
+      "type": "mcq"
+    }
+  ],
+  "schema": 1,
+  "source": "Sample Bank.csv"
+}
