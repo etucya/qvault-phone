@@ -292,6 +292,8 @@ function statusLine({ state, actions }) {
   text.append(el('div', 'status-account', state.account || 'Not signed in'));
   const when = state.syncing
     ? 'Syncing…'
+    : state.prefetch?.remaining > 0
+      ? `Fetching pictures (${state.prefetch.remaining} left)`
     : state.lastSync
       ? `Last sync: ${relativeDate(state.lastSync)}`
       : 'Never synced';

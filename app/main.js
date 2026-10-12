@@ -8,7 +8,8 @@ import { indexedDBAdapter } from './storeIndexedDB.js';
 import { memoryAdapter } from './storeMemory.js';
 import { createAuth } from './auth.js';
 import { createDrive } from './drive.js';
-import { syncLibrary } from './sync.js';
+import { syncLibrary, fetchPicture } from './sync.js';
+import { planPrefetch, runPrefetch, PREFETCH_AT_ONCE } from './prefetch.js';
 import { renderLibrary } from './ui/library.js';
 import { renderSetup, newSetupState } from './ui/setup.js';
 import { renderStudy, stopStudy } from './ui/study.js';
@@ -29,6 +30,7 @@ const state = {
   setup: null, // the setup sheet's own state while it is open (ui/setup.js)
   session: null, // {model, key, title, flush} once a study session has started
   saveError: null,
+  prefetch: { remaining: 0 }, // background picture fetching, shown in the library's status line
 };
 
 let store;
@@ -43,10 +45,16 @@ function describe(error) {
 // ---------------------------------------------------------------------------------------
 // Screens
 
+let prefetchAborted = false;
+let prefetching = false;
+
 async function render() {
   if (!store) return;
   try {
     if (state.route === 'study' && state.session) {
+      // Studying has the phone's full attention; picture fetching stands down until the
+      // next sync or launch.
+      prefetchAborted = true;
       renderStudy(root, { store, drive, state, actions });
       return;
     }
@@ -64,14 +72,15 @@ async function render() {
 // Actions
 
 async function sync() {
-  if (state.syncing) return;
+  if (state.syncing) return false;
   if (!navigator.onLine) {
     state.error = "You're offline";
     render();
-    return;
+    return false;
   }
   state.syncing = true;
   state.error = null;
+  let ok = false;
   render();
   try {
     const result = await syncLibrary({ drive, store });
@@ -79,6 +88,7 @@ async function sync() {
     state.warning = result.failed.length
       ? `Could not read ${result.failed.map((f) => f.path).join(', ')}. The previous copy was kept.`
       : null;
+    ok = true;
   } catch (error) {
     state.error = describe(error);
   } finally {
@@ -86,6 +96,66 @@ async function sync() {
     state.account = auth.account();
     state.banks = null;
     render();
+  }
+  if (ok) schedulePrefetch();
+  return ok;
+}
+
+// ---------------------------------------------------------------------------------------
+// Picture prefetch: lowest priority, a few at a time, stops when a study session starts.
+
+function showPrefetchProgress() {
+  // Only the status line's text changes, so no full redraw per picture.
+  const line = state.route === 'library' ? root.querySelector('.status-sync') : null;
+  if (!line || state.syncing || state.prefetch.remaining <= 0) return;
+  line.textContent = `Fetching pictures (${state.prefetch.remaining} left)`;
+}
+
+function schedulePrefetch() {
+  setTimeout(() => {
+    prefetchPictures().catch((error) => console.error(error));
+  }, 0);
+}
+
+async function prefetchPictures() {
+  if (prefetching || !store || !navigator.onLine) return;
+  prefetching = true;
+  prefetchAborted = state.route === 'study';
+  let shown = false;
+  try {
+    const index = (await store.meta.get('mediaIndex')) ?? {};
+    const banks = [];
+    for (const { path } of await store.banks.list()) {
+      const bank = await store.banks.get(path);
+      if (bank) banks.push(bank);
+    }
+    // Names the library knows but Drive's media folder does not are not worth asking for.
+    const cached = new Set();
+    for (const bank of banks) {
+      for (const { image } of bank.questions) {
+        if (image && !cached.has(image) && (await store.pictures.has(image))) cached.add(image);
+      }
+    }
+    const names = planPrefetch(banks, (name) => cached.has(name)).filter((name) => Object.hasOwn(index, name));
+    if (names.length === 0 || prefetchAborted) return;
+    state.prefetch = { remaining: names.length };
+    shown = true;
+    showPrefetchProgress();
+    await runPrefetch({
+      names,
+      concurrency: PREFETCH_AT_ONCE,
+      fetchOne: (name) => fetchPicture({ drive, store, name, mediaIndex: index }),
+      shouldStop: () => prefetchAborted,
+      onProgress: (remaining) => {
+        state.prefetch = { remaining };
+        showPrefetchProgress();
+      },
+    });
+  } finally {
+    prefetching = false;
+    state.prefetch = { remaining: 0 };
+    // Back to "Last sync" in the status line.
+    if (shown && state.route === 'library' && !state.syncing) render();
   }
 }
 
@@ -158,10 +228,32 @@ async function launch() {
 
   // A token comes back without a tap only for someone who signed in before; otherwise
   // getToken is null and the first-run panel waits for the Sign in button.
-  if (!navigator.onLine) return;
-  await googleReady();
-  if ((await auth.getToken()) !== null) await sync();
+  await syncIfSignedIn();
 }
+
+/** Syncs when online and a token is to be had; quietly does nothing otherwise. */
+async function syncIfSignedIn() {
+  if (!navigator.onLine || state.syncing) return;
+  try {
+    await googleReady();
+    if ((await auth.getToken()) !== null) await sync();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Coming back to the app after a while away: bring the library up to date.
+const RESYNC_AFTER_MS = 10 * 60 * 1000;
+let hiddenAt = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    hiddenAt = Date.now();
+    return;
+  }
+  const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+  hiddenAt = null;
+  if (away > RESYNC_AFTER_MS) syncIfSignedIn();
+});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

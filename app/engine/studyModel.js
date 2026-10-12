@@ -109,6 +109,11 @@ export function createStudyModel({
     hits: [],
     saveError: null,
 
+    /** Writes the session now, stopwatch included, without touching the pause. For leaving the screen. */
+    save() {
+      save();
+    },
+
     // MARK: Reading
 
     /** The question as shown: options in this showing's order, answer letter moved. */

@@ -113,6 +113,15 @@ function answerNotes(question) {
   return wrap;
 }
 
+// The phone backgrounding the app (or locking) may be the last we hear of it: write the
+// session, stopwatch included. The pause state is left as it is.
+globalThis.document?.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden' || exiting || !ctx?.state.session) return;
+  const session = ctx.state.session;
+  session.model?.save?.();
+  session.flush?.()?.catch?.(() => {});
+});
+
 // ---------------------------------------------------------------------------------------
 // Acting
 
@@ -132,6 +141,8 @@ async function exitToLibrary() {
   const session = state.session;
   stopStudy();
   try {
+    // The stopwatch is written even when no answer has been given since the last save.
+    session?.model?.save?.();
     await session?.flush?.();
   } catch {
     // A failed write has already been reported through onSaveError.

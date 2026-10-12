@@ -740,6 +740,21 @@ test('theStopwatchIsSavedAndCarriesOnWhenTheSessionIsResumed', () => {
   assert.equal(second.activeMs(clock), 50_000);
 });
 
+test('saveWritesTheStopwatchWithoutAnAnswerAndLeavesThePauseAlone', () => {
+  const d = disk();
+  let clock = at(1_000);
+  const m = createStudyModel({
+    set: fixture(3), settings: writtenSettings, now: () => clock, persist: d.persist,
+  });
+  clock = at(1_030);
+  m.pause();
+  clock = at(1_050); // 20 seconds paused do not count
+  m.save();
+  assert.equal(d.saved.session.activeMs, 30_000);
+  assert.equal(m.isPaused, true);
+  assert.equal(m.saveError, null);
+});
+
 test('aSessionSavedBeforeTheStopwatchExistedResumesAtZero', () => {
   const json = {
     startedAt: '2026-01-01T00:00:00Z', settings: {}, queue: ['q1'], position: 0,
