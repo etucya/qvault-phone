@@ -1,0 +1,496 @@
+/* Layout and components. Every colour, radius and spacing comes from theme.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--size-body);
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+#app {
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------------- top bar & crumbs */
+
+.topbar {
+  padding: var(--space-tight) var(--space-card) var(--space-tight);
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 calc(-1 * var(--space-tight));
+}
+
+.crumb {
+  min-height: 44px;
+  padding: 0 var(--space-tight);
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: var(--accent);
+  font-size: var(--size-body);
+  font-weight: 600;
+}
+
+.crumb:active {
+  background: var(--fill);
+}
+
+.crumb-sep {
+  color: var(--faint);
+  font-size: var(--size-meta);
+}
+
+.title {
+  margin: 0;
+  padding: var(--space-tight) 0 0;
+  font-size: var(--size-title);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- scroll & list */
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--space-card) var(--space-card);
+  display: flex;
+  flex-direction: column;
+}
+
+.pull {
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: var(--size-meta);
+  transition: height 0.18s ease;
+}
+
+.pull-ready {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-tight);
+  padding-top: var(--space-tight);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-gap);
+  min-height: 64px;
+  padding: var(--space-gap) var(--space-card);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  border: 1.5px solid transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  cursor: default;
+  transition: transform 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.row[role='button']:active {
+  background: var(--panel-top);
+  transform: scale(0.985);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row-name {
+  font-size: var(--size-option);
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-tight);
+  font-size: var(--size-meta);
+  color: var(--faint);
+}
+
+.row-folder {
+  background: var(--fill);
+}
+
+.row-selected {
+  border-color: var(--accent);
+  background: var(--panel-top);
+}
+
+.row-corrupt {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.row-corrupt .row-meta {
+  color: var(--warn);
+}
+
+.tag-new {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--cyan);
+  color: var(--ground);
+  font-size: var(--size-label);
+  font-weight: 700;
+}
+
+.icon {
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-folder {
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+}
+
+.icon-chevron {
+  width: 18px;
+  height: 18px;
+  color: var(--faint);
+}
+
+.check {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.check-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ground);
+}
+
+.icon-check {
+  width: 16px;
+  height: 16px;
+  stroke-width: 3;
+}
+
+/* session progress inside a bank row */
+
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.session-track {
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.session-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--gradient-progress);
+}
+
+.session-text {
+  font-size: var(--size-label);
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------------- mastery ring */
+
+.ring {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring svg {
+  position: absolute;
+  inset: 0;
+}
+
+.ring-track {
+  stroke: var(--line);
+}
+
+.ring-label {
+  position: relative;
+  font-size: var(--size-label);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ring-empty {
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- pill buttons */
+
+.pill {
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-size: var(--size-body);
+  font-weight: 700;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.pill:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.pill:disabled {
+  opacity: 0.4;
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pill-primary {
+  background: var(--accent);
+  color: var(--ground);
+}
+
+.pill-secondary {
+  background: var(--fill-strong);
+  color: var(--text);
+}
+
+.pill-ghost {
+  background: none;
+  color: var(--dim);
+}
+
+.pill-good {
+  background: var(--good);
+  color: var(--ground);
+}
+
+/* ---------------------------------------------------------------- banners */
+
+.banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-tight);
+  padding: 0 var(--space-card);
+}
+
+.banners:empty {
+  display: none;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-gap);
+  padding: var(--space-tight) var(--space-tight) var(--space-tight) var(--space-card);
+  min-height: 52px;
+  border-radius: var(--radius-option);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.banner-text {
+  flex: 1;
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--text);
+}
+
+.banner-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+}
+
+.banner-bad {
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  background: color-mix(in srgb, var(--bad) 12%, var(--panel));
+}
+
+.banner-bad .banner-dot {
+  background: var(--bad);
+}
+
+.banner-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+}
+
+.banner-warn .banner-dot {
+  background: var(--warn);
+}
+
+.banner-good {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  background: color-mix(in srgb, var(--good) 12%, var(--panel));
+}
+
+.banner-good .banner-dot {
+  background: var(--good);
+}
+
+/* ---------------------------------------------------------------- status & selection bars */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-gap);
+  padding: var(--space-gap) var(--space-card) calc(var(--space-gap) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+.status-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-account {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-sync {
+  font-size: var(--size-label);
+  color: var(--faint);
+}
+
+.selectbar {
+  justify-content: space-between;
+}
+
+.selectbar .pill-primary {
+  flex: 1;
+  max-width: 260px;
+}
+
+/* ---------------------------------------------------------------- centred panels */
+
+.centre {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-card);
+  padding-bottom: calc(var(--space-card) + env(safe-area-inset-bottom));
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: var(--radius-card);
+  padding: var(--space-card);
+}
+
+.hero {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-card);
+  padding: calc(var(--space-card) * 2) var(--space-card) var(--space-card);
+  text-align: center;
+}
+
+.hero-text {
+  margin: 0;
+  font-size: var(--size-option);
+  color: var(--dim);
+}
+
+.hero .pill {
+  width: 100%;
+}

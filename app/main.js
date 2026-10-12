@@ -1,0 +1,191 @@
+// The app shell: opens the store, holds the screen state, wires sign-in and sync, and
+// routes between screens. The library draws from the store straight away; sync runs after,
+// so the app never waits on the network.
+
+import { GOOGLE_CLIENT_ID } from './config.js';
+import { openStore } from './store.js';
+import { indexedDBAdapter } from './storeIndexedDB.js';
+import { memoryAdapter } from './storeMemory.js';
+import { createAuth } from './auth.js';
+import { createDrive } from './drive.js';
+import { syncLibrary } from './sync.js';
+import { renderLibrary, bankName } from './ui/library.js';
+import { el, pillButton, plural } from './ui/components.js';
+
+const root = document.getElementById('app');
+
+const state = {
+  route: 'library',
+  folder: '',
+  selecting: false,
+  selected: new Set(),
+  syncing: false,
+  error: null,
+  warning: null,
+  account: null,
+  lastSync: null,
+  banks: null, // the store's bank list, cached between renders; null means "read again"
+  setupPaths: [],
+};
+
+let store;
+const auth = createAuth({ clientId: GOOGLE_CLIENT_ID });
+const drive = createDrive({ fetch: (...args) => fetch(...args), getToken: () => auth.getToken() });
+
+function describe(error) {
+  if (error?.unauthorized) return 'Google needs you to sign in again (unauthorized). Studying still works from what is on this phone.';
+  return error?.message || String(error);
+}
+
+// ---------------------------------------------------------------------------------------
+// Screens
+
+function renderSetupPlaceholder() {
+  const screen = el('div', 'screen');
+  const bar = el('header', 'topbar');
+  const names = state.setupPaths.map((path) => {
+    const bank = state.banks?.find((b) => b.path === path);
+    return bank ? bankName(bank) : path;
+  });
+  bar.append(el('h1', 'title', names.length === 1 ? names[0] : plural(names.length, 'bank')));
+  const centre = el('div', 'centre');
+  const panel = el('div', 'panel hero');
+  panel.append(
+    el('p', 'hero-text', 'Setup — coming next'),
+    pillButton({
+      label: 'Back to library',
+      style: 'secondary',
+      onTap: () => {
+        state.route = 'library';
+        render();
+      },
+    }),
+  );
+  centre.append(panel);
+  screen.append(bar, centre);
+  root.replaceChildren(screen);
+}
+
+async function render() {
+  if (!store) return;
+  try {
+    if (state.route === 'setup') renderSetupPlaceholder();
+    else await renderLibrary(root, { store, state, actions });
+  } catch (error) {
+    console.error(error);
+    state.error = `Could not show the library: ${describe(error)}`;
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Actions
+
+async function sync() {
+  if (state.syncing) return;
+  if (!navigator.onLine) {
+    state.error = "You're offline";
+    render();
+    return;
+  }
+  state.syncing = true;
+  state.error = null;
+  render();
+  try {
+    const result = await syncLibrary({ drive, store });
+    state.lastSync = await store.meta.get('lastSync');
+    state.warning = result.failed.length
+      ? `Could not read ${result.failed.map((f) => f.path).join(', ')}. The previous copy was kept.`
+      : null;
+  } catch (error) {
+    state.error = describe(error);
+  } finally {
+    state.syncing = false;
+    state.account = auth.account();
+    state.banks = null;
+    render();
+  }
+}
+
+async function signIn() {
+  try {
+    await auth.signIn();
+    state.account = auth.account();
+    state.error = null;
+  } catch (error) {
+    state.error = `Sign-in failed: ${describe(error)}`;
+    render();
+    return;
+  }
+  render();
+  await sync();
+}
+
+function goToSetup(paths) {
+  state.setupPaths = paths;
+  state.selecting = false;
+  state.selected = new Set();
+  state.route = 'setup';
+  render();
+}
+
+const actions = {
+  render,
+  sync,
+  signIn,
+  openBank: (path) => goToSetup([path]),
+  studyBanks: (paths) => goToSetup(paths),
+};
+
+// ---------------------------------------------------------------------------------------
+// Launch
+
+async function openPhoneStore() {
+  try {
+    return await openStore(await indexedDBAdapter());
+  } catch (error) {
+    state.error = `Could not open storage on this phone, so nothing will be kept: ${describe(error)}`;
+    return openStore(memoryAdapter());
+  }
+}
+
+/** Waits (briefly) for the Google sign-in script, which loads async alongside this one. */
+function googleReady(timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const check = () => {
+      if (globalThis.google?.accounts?.oauth2) resolve(true);
+      else if (Date.now() - started > timeoutMs) resolve(false);
+      else setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+async function launch() {
+  store = await openPhoneStore();
+  state.account = auth.account();
+  try {
+    state.lastSync = await store.meta.get('lastSync');
+  } catch {
+    state.lastSync = null;
+  }
+  await render();
+  // For debugging from the console (seeding a bank, inspecting state).
+  globalThis.qvault = { store, state, render, actions };
+
+  // A token comes back without a tap only for someone who signed in before; otherwise
+  // getToken is null and the first-run panel waits for the Sign in button.
+  if (!navigator.onLine) return;
+  await googleReady();
+  if ((await auth.getToken()) !== null) await sync();
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      // Without a worker the app still runs; it just will not open offline.
+    });
+  });
+}
+
+launch();
