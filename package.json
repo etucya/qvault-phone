@@ -1,0 +1,10 @@
+{
+  "name": "qvault-phone",
+  "private": true,
+  "type": "module",
+  "description": "QVault for the phone: studies the Mac's question banks, pulled from Google Drive.",
+  "scripts": {
+    "test": "node --test test/",
+    "serve": "python3 -m http.server 8787 --directory app"
+  }
+}

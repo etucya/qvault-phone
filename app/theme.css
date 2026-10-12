@@ -1,0 +1,48 @@
+/* Midnight — the same palette and shapes as QVault on the Mac (Theme.swift). */
+:root {
+  --ground: #0c1730;
+  --app: #122145;
+  --panel: #1a2d59;
+  --panel-top: #203669;
+  --sidebar: #0a1430;
+
+  --text: #eaf0ff;
+  --dim: #9aaed6;
+  --faint: #6a80ad;
+
+  --accent: #4d8ef7;
+  --magenta: #e35bd0;
+  --violet: #7b6cf6;
+  --cyan: #3ecfe0;
+
+  --good: #35d9a0;
+  --bad: #ff6b8a;
+  --warn: #ffc247;
+
+  --line: rgba(255, 255, 255, 0.09);
+  --fill: rgba(255, 255, 255, 0.05);
+  --fill-strong: rgba(255, 255, 255, 0.09);
+  --track: rgba(255, 255, 255, 0.07);
+  --scrim: rgba(0, 0, 0, 0.55);
+
+  --gradient-primary: linear-gradient(135deg, var(--magenta), var(--violet), var(--accent));
+  --gradient-progress: linear-gradient(90deg, var(--accent), var(--cyan));
+
+  --radius-card: 20px;
+  --radius-option: 16px;
+  --radius-field: 13px;
+  --radius-row: 12px;
+  --radius-pill: 999px;
+
+  --space-card: 16px;
+  --space-gap: 12px;
+  --space-tight: 8px;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --size-question: 19px;
+  --size-option: 16px;
+  --size-title: 22px;
+  --size-body: 15px;
+  --size-meta: 13px;
+  --size-label: 12px;
+}
