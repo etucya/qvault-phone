@@ -5,7 +5,7 @@
 // network answer that arrives late still refreshes the cache for next time. Bump VERSION
 // whenever the list changes. Google's sign-in and Drive requests are never touched.
 
-const VERSION = 'qvault-v5';
+const VERSION = 'qvault-v6';
 const NETWORK_TIMEOUT_MS = 3000;
 
 // Every file under app/ except this one. test/shell.test.js checks the list against disk.
@@ -32,6 +32,7 @@ const SHELL = [
   './ui/setupLogic.js',
   './ui/study.js',
   './ui/studyLogic.js',
+  './ui/studyKeys.js',
   './ui/picture.js',
   './engine/dates.js',
   './engine/keywords.js',

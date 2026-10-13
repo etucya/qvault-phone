@@ -20,6 +20,7 @@ import {
   pauseLine, feedback, distractorNote, keywordLines, hitKeywords, studyActions, ACTION_LABELS,
   optionState, optionTap, scrollIntent, finishedLines, skipDeadQuestions,
 } from './studyLogic.js';
+import { keyAction } from './studyKeys.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -31,6 +32,7 @@ let shown = null; // {id, revealed} as last drawn, for scrolling
 let enlarged = null; // the picture name shown full screen
 let pauseShown = false; // the pause sheet has already slid in
 let exiting = false;
+let keyListener = null; // the one window keydown listener, while the screen is up
 
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -49,6 +51,7 @@ export function renderStudy(root, { store, drive, state, actions }) {
   }
   const sameSession = ctx?.state.session === state.session;
   ctx = { root, store, drive, state, actions };
+  listenForKeys();
   // A redraw from outside (a sync finishing, a banner) while the answer box is being
   // typed in would rebuild the box under the keyboard. Nothing it changes is in the
   // question area, so only the banners are brought up to date; the next tap redraws all.
@@ -84,6 +87,7 @@ function patchBanners() {
 /** Stops the clocks and lets the pictures go. Safe to call when the screen is not up. */
 export function stopStudy() {
   stopTicker();
+  stopListeningForKeys();
   if (ctx) releasePictures();
   ctx = null;
   shown = null;
@@ -228,6 +232,95 @@ function actionRow(model, question) {
     row.append(button);
   }
   return row;
+}
+
+// ---------------------------------------------------------------------------------------
+// Keyboard (a Bluetooth keyboard or a clicker remote; the rules are in studyKeys.js)
+
+function listenForKeys() {
+  if (keyListener || !globalThis.addEventListener) return;
+  keyListener = onKey;
+  globalThis.addEventListener('keydown', keyListener);
+}
+
+function stopListeningForKeys() {
+  if (!keyListener) return;
+  globalThis.removeEventListener('keydown', keyListener);
+  keyListener = null;
+}
+
+/** What the screen shows, as studyKeys.js reads it. */
+function keyState(model, current) {
+  if (!current) return { type: null };
+  const box = ctx.root.querySelector('.answer-box');
+  return {
+    type: current.type,
+    revealed: model.revealed,
+    graded: model.lastOutcome !== null,
+    answerLetter: current.answer,
+    optionLetters: (current.options ?? []).map((option) => option.letter),
+    hasImage: Boolean(current.image),
+    typingAnswer: Boolean(box && globalThis.document?.activeElement === box),
+    pictureOpen: Boolean(ctx.root.querySelector('.picture-overlay')),
+    paused: model.isPaused,
+    canUndo: model.canUndo,
+    canRepeatLater: model.canRepeatLater,
+  };
+}
+
+function onKey(event) {
+  // Handled once: a second listener, or a key something else already took, is left alone.
+  if (event.defaultPrevented || exiting || !ctx?.state.session) return;
+  const model = ctx.state.session.model;
+  const current = model.current;
+  const action = keyAction(event, keyState(model, current));
+  if (!action) return;
+  event.preventDefault();
+  const blurBox = () => ctx.root.querySelector('.answer-box')?.blur(); // the keyboard goes down
+
+  if (action.startsWith('choose:')) {
+    const letter = action.slice('choose:'.length);
+    act((m) => m.choose(letter))();
+    return;
+  }
+  switch (action) {
+    case 'advance': act((m) => m.advance())(); break;
+    case 'reveal': act((m) => { blurBox(); m.reveal(); })(); break;
+    case 'gradeCorrect': act((m) => m.grade('correct'))(); break;
+    case 'gradeWrong': act((m) => m.grade('wrong'))(); break;
+    case 'dontKnow':
+      // The same as the button: on a revealed open question it is the grade.
+      act((m) => {
+        if (current.type === 'open' && m.revealed) m.grade('dontknow');
+        else {
+          blurBox();
+          m.dontKnow();
+        }
+      })();
+      break;
+    case 'repeatLater': act((m) => m.repeatLater())(); break;
+    case 'skip': act((m) => m.skip())(); break;
+    case 'undo': act((m) => m.undo())(); break;
+    case 'togglePicture':
+      if (enlarged) enlarged = null;
+      else if (pictureURL(current.image)) enlarged = current.image;
+      else return; // not loaded yet: nothing to show
+      draw();
+      break;
+    case 'escape':
+      // Whatever is open closes first; with nothing open, Esc pauses.
+      if (ctx.root.querySelector('.picture-overlay')) {
+        enlarged = null;
+        draw();
+      } else if (model.isPaused) {
+        act((m) => m.resume())();
+      } else {
+        act((m) => m.pause())();
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 // ---------------------------------------------------------------------------------------
