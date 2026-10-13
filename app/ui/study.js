@@ -301,6 +301,16 @@ function onKey(event) {
     case 'repeatLater': act((m) => m.repeatLater())(); break;
     case 'skip': act((m) => m.skip())(); break;
     case 'undo': act((m) => m.undo())(); break;
+    case 'scrollUp':
+    case 'scrollDown': {
+      // The clicker's shoulder buttons scroll the page on the Mac; here they move the
+      // question by most of a screen, so a long explanation can be read without a thumb.
+      const scroll = ctx.root.querySelector('.study-scroll');
+      if (!scroll) break;
+      const step = scroll.clientHeight * 0.6 * (action === 'scrollDown' ? 1 : -1);
+      scroll.scrollBy({ top: step, behavior: reducedMotion() ? 'auto' : 'smooth' });
+      break;
+    }
     case 'togglePicture':
       if (enlarged) enlarged = null;
       else if (pictureURL(current.image)) enlarged = current.image;

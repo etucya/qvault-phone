@@ -95,12 +95,14 @@ test('the arrows never touch a choice question', () => {
 });
 
 test('no plain key moves past an unanswered question; only ⌘→ skips', () => {
-  const keys = ['Enter', ' ', 'ArrowRight', 'ArrowLeft', 'r', 'f', 'k', 's', 'x', '9'];
+  const keys = ['Enter', ' ', 'ArrowRight', 'ArrowLeft', 'r', 'm', 'f', 'k', 's', 'x', 'v', 'l', '9'];
+  // Scrolling and revealing leave the question where it is.
+  const stays = (a) => a === null || a === 'reveal' || a === 'scrollUp' || a === 'scrollDown';
   for (const key of keys) {
     const onChoice = keyAction(press(key), choice({ optionLetters: ['A', 'B'] }));
-    assert.ok(onChoice === null, `${key} on a choice question gave ${onChoice}`);
+    assert.ok(onChoice === null || onChoice.startsWith('scroll'), `${key} on a choice question gave ${onChoice}`);
     const onOpen = keyAction(press(key), open());
-    assert.ok(onOpen === null || onOpen === 'reveal', `${key} on an open question gave ${onOpen}`);
+    assert.ok(stays(onOpen), `${key} on an open question gave ${onOpen}`);
   }
   assert.equal(keyAction(press('ArrowRight', { metaKey: true }), choice()), 'skip');
   assert.equal(keyAction(press('ArrowRight', { ctrlKey: true }), open()), 'skip');
@@ -119,13 +121,30 @@ test('⌘D (or Ctrl+D) is I don\'t know before the reveal', () => {
   assert.equal(keyAction(press('d'), choice()), 'choose:D');
 });
 
-test('R is repeat later only right after a correct answer', () => {
-  assert.equal(keyAction(press('r'), answered({ canRepeatLater: true })), 'repeatLater');
-  assert.equal(keyAction(press('R'), open({ revealed: true, graded: true, canRepeatLater: true })), 'repeatLater');
-  assert.equal(keyAction(press('r'), answered()), null);
-  // R never picks an option R, even on a bank that has one (the Mac claims it too).
-  const many = choice({ optionLetters: 'ABCDEFGHIJKLMNOPQRS'.split('') });
-  assert.equal(keyAction(press('r'), many), null);
+test('the clicker letters do what Karabiner makes them do on the Mac', () => {
+  // L2 sends L: undo, when there is something to undo.
+  assert.equal(keyAction(press('l'), answered({ canUndo: true })), 'undo');
+  assert.equal(keyAction(press('l'), choice({ canUndo: false })), null);
+  // ↑ sends V and ↓ sends X: Missed it and Got it on a revealed open question.
+  assert.equal(keyAction(press('v'), open({ revealed: true })), 'gradeWrong');
+  assert.equal(keyAction(press('x'), open({ revealed: true })), 'gradeCorrect');
+  assert.equal(keyAction(press('x'), open({ revealed: true, graded: true })), 'advance');
+  assert.equal(keyAction(press('v'), open({ revealed: true, graded: true })), null);
+  assert.equal(keyAction(press('v'), choice()), null);
+  assert.equal(keyAction(press('x'), choice()), null);
+  // R and R2 send M and R: scrolling, never Repeat later and never an option.
+  assert.equal(keyAction(press('m'), answered()), 'scrollUp');
+  assert.equal(keyAction(press('r'), answered({ canRepeatLater: true })), 'scrollDown');
+  // − sends N, which is play/pause on the Mac and never reaches QVault.
+  assert.equal(keyAction(press('n'), choice()), null);
+  // None of them picks an option of that letter, even on a bank that has one.
+  const many = choice({ optionLetters: 'ABCDEFGHIJKLMNOPQRSTUVWX'.split('') });
+  for (const key of ['l', 'v', 'x', 'm', 'r', 'n']) assert.notEqual(keyAction(press(key), many), `choose:${key.toUpperCase()}`, key);
+  // While typing an answer they all type.
+  for (const key of ['l', 'v', 'x', 'm', 'r', 'n']) assert.equal(keyAction(press(key), open({ typingAnswer: true })), null, key);
+  // ☰ sends S: the picture, as before; → sends Enter: next.
+  assert.equal(keyAction(press('s'), choice({ hasImage: true })), 'togglePicture');
+  assert.equal(keyAction(press('Enter'), answered()), 'advance');
 });
 
 test('⌘Z (or Ctrl+Z) is undo only when there is something to undo', () => {

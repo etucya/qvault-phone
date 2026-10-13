@@ -21,7 +21,22 @@
 //   canUndo, canRepeatLater
 //
 // Actions: 'choose:<letter>', 'advance', 'reveal', 'gradeCorrect', 'gradeWrong',
-// 'dontKnow', 'repeatLater', 'skip', 'undo', 'togglePicture', 'escape'.
+// 'dontKnow', 'repeatLater', 'skip', 'undo', 'togglePicture', 'escape', 'scrollUp',
+// 'scrollDown'.
+//
+// The 8BitDo Micro clicker. It sends plain letters, and on the Mac Karabiner rewrites
+// some of them before QVault sees them; the phone has no Karabiner, so the same rewrites
+// live here, so that each button does on the phone what it does on the Mac:
+//   L2 sends L   → undo (⌃Z on the Mac)
+//   ↑  sends V   → ← (Missed it)
+//   ↓  sends X   → → (Got it)
+//   R  sends M   → scroll up
+//   R2 sends R   → scroll down
+//   −  sends N   → play/pause on the Mac, which never reaches QVault: claimed, does nothing
+//   ☰  sends S   → the picture, as on the Mac
+//   A B Y X +    → options A B C D E, as on the Mac; → sends Enter
+// The cost is that a typed R no longer means Repeat later and V, X, L, M, N never pick an
+// option of that letter; no bank has that many, and the clicker is what gets used.
 
 const isChoice = (type) => type === 'mcq' || type === 'tf';
 
@@ -38,6 +53,14 @@ function optionAction(letter, s) {
   if (!isChoice(s.type) || !(s.optionLetters ?? []).includes(letter)) return null;
   if (s.revealed) return letter === s.answerLetter ? 'advance' : null;
   return `choose:${letter}`;
+}
+
+/** → is Got it and ← is Missed it on a revealed open question; → is Next once graded. */
+function arrowAction(right, s) {
+  if (s.type !== 'open' || !s.revealed) return null;
+  if (!s.graded) return right ? 'gradeCorrect' : 'gradeWrong';
+  // Graded and holding for Repeat later: → is Next, as on the Mac. ← has nothing to do.
+  return right ? 'advance' : null;
 }
 
 /** ⌘D: before the reveal on any question; on an open question, also as its grade. */
@@ -93,19 +116,20 @@ export function keyAction(event, state) {
 
   if (key === 'Enter' || key === ' ' || key === 'Spacebar') return returnAction(s);
 
-  if (key === 'ArrowRight' || key === 'ArrowLeft') {
-    if (s.type !== 'open' || !s.revealed) return null;
-    if (!s.graded) return key === 'ArrowRight' ? 'gradeCorrect' : 'gradeWrong';
-    // Graded and holding for Repeat later: → is Next, as on the Mac. ← has nothing to do.
-    return key === 'ArrowRight' ? 'advance' : null;
-  }
+  if (key === 'ArrowRight' || key === 'ArrowLeft') return arrowAction(key === 'ArrowRight', s);
 
   if (key.length !== 1) return null;
   const lower = key.toLowerCase();
+  // The clicker's letters, rewritten as Karabiner rewrites them on the Mac.
+  if (lower === 'l') return s.canUndo ? 'undo' : null;
+  if (lower === 'v') return arrowAction(false, s);
+  if (lower === 'x') return arrowAction(true, s);
+  if (lower === 'm') return 'scrollUp';
+  if (lower === 'r') return 'scrollDown';
+  if (lower === 'n') return null;
   // F (flag) and K (tags) are the Mac's; the phone has neither yet. They are still
   // claimed, as on the Mac, so they never pick option F or K.
   if (lower === 'f' || lower === 'k') return null;
-  if (lower === 'r') return s.canRepeatLater ? 'repeatLater' : null;
   // S is the picture only when there is one; otherwise it is option S.
   if (lower === 's' && s.hasImage) return 'togglePicture';
 
