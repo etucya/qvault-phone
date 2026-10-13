@@ -29,6 +29,8 @@ let ctx = null; // {root, store, drive, state, actions}
 let ticker = null;
 let clocks = null; // {stopwatch, question} text nodes the ticker writes
 let shown = null; // {id, revealed} as last drawn, for scrolling
+/** Where the clicker's last scroll press was heading; null once the user touches the page. */
+let scrollTarget = null;
 let enlarged = null; // the picture name shown full screen
 let pauseShown = false; // the pause sheet has already slid in
 let exiting = false;
@@ -308,7 +310,14 @@ function onKey(event) {
       const scroll = ctx.root.querySelector('.study-scroll');
       if (!scroll) break;
       const step = scroll.clientHeight * 0.6 * (action === 'scrollDown' ? 1 : -1);
-      scroll.scrollBy({ top: step, behavior: reducedMotion() ? 'auto' : 'smooth' });
+      // From where the last press was heading, not from wherever the animation has got
+      // to, and never past either end: iOS lets a smooth scroll run beyond the edges and
+      // leaves the page sitting there, which is how a few quick presses on the clicker
+      // scrolled the question clean off the screen.
+      const from = scrollTarget ?? scroll.scrollTop;
+      const limit = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      scrollTarget = Math.min(limit, Math.max(0, from + step));
+      scroll.scrollTo({ top: scrollTarget, behavior: reducedMotion() ? 'auto' : 'smooth' });
       break;
     }
     case 'togglePicture':
@@ -598,6 +607,9 @@ function draw() {
   }
 
   const scroll = el('div', 'scroll study-scroll');
+  // A fresh page, or a thumb on it, is the real position again.
+  scrollTarget = null;
+  scroll.addEventListener('touchstart', () => { scrollTarget = null; }, { passive: true });
   const column = el('div', 'study-column');
   if (current.image) {
     column.append(pictureView(current.image, {
