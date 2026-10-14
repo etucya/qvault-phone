@@ -12,6 +12,8 @@ import { syncLibrary, fetchPicture } from './sync.js';
 import { planPrefetch, runPrefetch, PREFETCH_AT_ONCE } from './prefetch.js';
 import { renderLibrary } from './ui/library.js';
 import { renderSetup, newSetupState } from './ui/setup.js';
+import { startStudy, loadSettings } from './ui/setupLogic.js';
+import { forgetSession } from './ui/continueLogic.js';
 import { renderStudy, stopStudy } from './ui/study.js';
 import { el, banner, pillButton } from './ui/components.js';
 
@@ -29,6 +31,7 @@ const state = {
   account: null,
   lastSync: null,
   banks: null, // the store's bank list, cached between renders; null means "read again"
+  continueCard: null, // the library's Continue card ({title, remaining, tags, plan}), read with banks
   setup: null, // the setup sheet's own state while it is open (ui/setup.js)
   session: null, // {model, key, title, flush} once a study session has started
   saveError: null,
@@ -230,12 +233,53 @@ function goToSetup(paths) {
   render();
 }
 
+/**
+ * The Continue card: straight back into the remembered session, no setup sheet. The same
+ * startStudy Resume uses (pool rebuilt from the banks still here, session pruned to them),
+ * under the remembered key and with the settings stored for it.
+ */
+let continuing = false;
+async function continueSession(plan) {
+  if (continuing) return;
+  continuing = true;
+  try {
+    const settings = await loadSettings(store, plan.key);
+    const session = await startStudy({
+      store,
+      paths: plan.paths,
+      key: plan.key,
+      settings,
+      mode: 'resume',
+      resumeOnly: true,
+      onSaveError: (error) => {
+        if (state.session) state.session.model.saveError = error;
+        state.saveError = `Could not save your progress: ${error?.message || error}`;
+        render();
+      },
+    });
+    state.session = session;
+    state.selecting = false;
+    state.selected = new Set();
+    state.banks = null;
+    state.route = 'study';
+  } catch (error) {
+    // Finished since the card was drawn: the card just goes. Anything else is shown.
+    if (error?.finished) await forgetSession(store, plan.key).catch(() => {});
+    else state.error = `Could not continue: ${describe(error)}`;
+    state.banks = null;
+  } finally {
+    continuing = false;
+  }
+  render();
+}
+
 const actions = {
   render,
   sync: syncNow,
   signIn,
   openBank: (path) => goToSetup([path]),
   studyBanks: (paths) => goToSetup(paths),
+  continueSession,
 };
 
 // ---------------------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 
 import { LIBRARY_FOLDER } from '../config.js';
 import { el, pillButton, masteryRing, banner, qMark, relativeDate, plural } from './components.js';
+import { loadContinue, continueMeta } from './continueLogic.js';
 
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP_PX = 10;
@@ -245,6 +246,23 @@ function bankRow(bank, { state, actions }) {
   return node;
 }
 
+/** The Continue card: the last session, one tap back into it. */
+function continueRow(card, { actions }) {
+  const node = row('row-continue');
+  const main = el('div', 'row-main');
+  main.append(
+    el('div', 'continue-label', 'Continue'),
+    el('div', 'row-name', card.title),
+    el('div', 'row-meta', continueMeta(card)),
+  );
+  const play = el('span', 'continue-go');
+  play.append(icon(['M8 5.5v13l10.5-6.5z'], 'icon-play'));
+  node.append(main, play);
+  node.setAttribute('aria-label', `Continue ${card.title}, ${continueMeta(card)}`);
+  pressable(node, { onTap: () => actions.continueSession(card.plan) });
+  return node;
+}
+
 // ---------------------------------------------------------------------------------------
 // Screen parts
 
@@ -408,8 +426,15 @@ export async function renderLibrary(root, { store, state, actions }) {
   const seq = (renderSeq += 1);
   if (!state.banks) {
     const banks = await loadLibrary(store);
+    let card = null;
+    try {
+      card = await loadContinue(store, banks);
+    } catch {
+      card = null; // the card is a shortcut; the library stands without it
+    }
     if (seq !== renderSeq) return; // a newer render took over
     state.banks = banks;
+    state.continueCard = card;
   }
   const banks = state.banks;
 
@@ -445,6 +470,7 @@ export async function renderLibrary(root, { store, state, actions }) {
     const view = folderView(banks, state.folder);
     const list = el('div', 'list');
     list.setAttribute('role', 'list');
+    if (state.folder === '' && !state.selecting && state.continueCard) list.append(continueRow(state.continueCard, context));
     for (const folder of view.folders) list.append(folderRow(folder, context));
     for (const bank of view.banks) list.append(bankRow(bank, context));
     scroll.append(list);

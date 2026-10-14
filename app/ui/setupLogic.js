@@ -10,6 +10,7 @@ import { createStudyModel } from '../engine/studyModel.js';
 import { pruneSession } from '../sync.js';
 import { bankName } from './library.js';
 import { plural } from './components.js';
+import { rememberSession, forgetSession } from './continueLogic.js';
 
 const POOL_PREFIX = 'pool:';
 
@@ -136,15 +137,17 @@ export async function saveSettings(store, key, settings) {
 /**
  * Everything the sheet shows for `paths`: the banks in library order (the order
  * `store.banks.list()` gives), the questions as they would be studied, the settings with
- * dead tags pruned (and saved so), and the saved session if one can be read.
+ * dead tags pruned (and saved so), and the saved session if one can be read, pruned to the
+ * questions the set still holds. `key` reads settings and session under that key instead of
+ * the one the remaining banks make: the Continue card's pool with a bank gone.
  */
-export async function loadSetup(store, paths) {
+export async function loadSetup(store, paths, { key: keyOverride = null } = {}) {
   const wanted = new Set(paths);
   const listed = (await store.banks.list()).filter((summary) => wanted.has(summary.path) && !summary.corrupt);
   const banks = (await Promise.all(listed.map((summary) => store.banks.get(summary.path)))).filter(Boolean);
   if (banks.length === 0) throw new Error('That bank is no longer on this phone.');
 
-  const key = settingsKey(banks.map((bank) => bank.path));
+  const key = keyOverride ?? settingsKey(banks.map((bank) => bank.path));
   const pool = banks.length === 1 ? null : buildPool(banks);
   const questions = pool ? pool.questions : banks[0].questions;
   const title = pool ? plural(banks.length, 'bank') : bankName(banks[0]);
@@ -176,6 +179,7 @@ async function pruneSavedSession(store, key, session, questions) {
   const pruned = pruneSession(session, questions.map((q) => q.id));
   if (pruned.queue.length === 0) {
     await store.sessions.delete(key);
+    await forgetSession(store, key);
     return null;
   }
   const encoded = encodeState(pruned);
@@ -197,6 +201,11 @@ export function wipeAttempts(bank) {
  * then start). Settings are saved first. Every change the model saves goes back through
  * the store in order; a write that fails is passed to `onSaveError`.
  *
+ * `key` overrides the key settings and session live under (see loadSetup). With
+ * `resumeOnly`, a missing saved session throws instead of starting a new one. Every start
+ * or resume is remembered for the library's Continue card, and forgotten when the session
+ * finishes.
+ *
  * Returns `{model, key, title, flush}`; `flush()` resolves once every queued write is done.
  */
 export async function startStudy({
@@ -204,11 +213,16 @@ export async function startStudy({
   paths,
   settings,
   mode = 'start',
+  key: keyOverride = null,
+  resumeOnly = false,
   now = undefined,
   random = undefined,
   onSaveError = () => {},
 }) {
-  const setup = await loadSetup(store, paths);
+  const setup = await loadSetup(store, paths, { key: keyOverride });
+  if (resumeOnly && setup.session === null) {
+    throw Object.assign(new Error('That session has finished.'), { finished: true });
+  }
   const chosen = effectiveSettings(setup.questions, decodeSettings(settings));
   const { key, title } = setup;
   await saveSettings(store, key, chosen);
@@ -229,8 +243,12 @@ export async function startStudy({
     writes = writes.then(job).catch((error) => onSaveError(error));
   };
   const writeSession = async (state) => {
-    if (state) await store.sessions.put(key, encodeState(state));
-    else await store.sessions.delete(key);
+    if (state) {
+      await store.sessions.put(key, encodeState(state));
+    } else {
+      await store.sessions.delete(key);
+      await forgetSession(store, key);
+    }
   };
 
   let set;
@@ -267,5 +285,6 @@ export async function startStudy({
   if (now) options.now = now;
   if (random) options.random = random;
   const model = createStudyModel(options);
+  await rememberSession(store, { key, title, paths: setup.paths, startedAt: now ? now() : new Date() });
   return { model, key, title, flush: () => writes };
 }

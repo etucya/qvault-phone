@@ -75,5 +75,7 @@ export async function openStore(adapter) {
     },
   };
 
-  return { banks, sessions, pictures, settings, meta: keyed('meta') };
+  const meta = { ...keyed('meta'), delete: (key) => adapter.delete('meta', key) };
+
+  return { banks, sessions, pictures, settings, meta };
 }
